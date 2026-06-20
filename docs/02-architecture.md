@@ -1,0 +1,122 @@
+# 02. 아키텍처
+
+## 2.1 구성 요소 개요
+
+TokenLift는 4개 레이어로 구성된다.
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ L1. Claude Code 통합 레이어                                     │
+│   - skills/tokenlift/SKILL.md   : 위임 판단/절차 지시           │
+│   - agents/ollama-delegate.md   : 위임 전용 서브에이전트         │
+│   - hooks/suggest-delegation.mjs: 프롬프트 자동 감지(선택)       │
+└───────────────┬──────────────────────────────────────────────┘
+                │ Bash 호출
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ L2. 브리지 CLI 레이어 (bin/tokenlift.mjs)                       │
+│   - 인자 파싱 / 명령 디스패치 / 입출력 계약                       │
+└───────────────┬──────────────────────────────────────────────┘
+                │
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ L3. 코어 모듈 레이어 (src/)                                      │
+│   config · router · tasks · ollama-client · logger · util       │
+└───────────────┬──────────────────────────────────────────────┘
+                │ HTTP (REST)
+                ▼
+┌──────────────────────────────────────────────────────────────┐
+│ L4. Ollama 런타임 (localhost:11434 또는 사내 호스트)            │
+│   /api/chat · /api/generate · /api/tags                         │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## 2.2 디렉토리 구조
+
+```
+TokenLift/
+├── bin/
+│   └── tokenlift.mjs          # CLI 엔트리(인자 파싱·디스패치·입출력)
+├── src/
+│   ├── config.mjs             # 설정 로딩/병합(기본<패키지<사용자<env)
+│   ├── ollama-client.mjs      # Ollama REST 클라이언트(chat/generate/tags/warmup)
+│   ├── router.mjs             # task→model 선택 + claude/ollama 위임 추천
+│   ├── tasks.mjs              # 태스크별 프롬프트 빌더
+│   ├── logger.mjs             # 사용량 JSONL 로깅 + 절감 추정/집계
+│   └── util.mjs               # 파일IO·코드추출·stdin·포맷 유틸
+├── config/
+│   └── tokenlift.config.json  # 팀 기본 설정(모델 매핑·단가·임계값)
+├── skills/tokenlift/
+│   ├── SKILL.md               # 메인 스킬(트리거·판단·절차)
+│   └── reference/
+│       ├── cli-reference.md    # CLI 전체 참조
+│       └── routing-rules.md    # 위임 판단 상세 규칙
+├── agents/
+│   └── ollama-delegate.md     # 위임 전용 서브에이전트
+├── hooks/
+│   └── suggest-delegation.mjs # UserPromptSubmit 자동감지 훅(선택)
+├── scripts/
+│   ├── install.ps1            # Windows 설치(스킬/에이전트 배포 + npm link)
+│   └── install.sh             # macOS/Linux 설치
+└── docs/                      # 본 문서 세트
+```
+
+## 2.3 데이터 흐름 (위임 1건)
+
+```
+1. Claude 가 무거운 코딩 작업을 식별 (SKILL.md 규칙)
+2. Bash: tokenlift test -f svc.py -o test_svc.py
+3. bin/tokenlift.mjs
+     → config.loadConfig()        # 모델 매핑/단가/타임아웃
+     → router.pickModel('test')   # = qwen2.5-coder:14b
+     → util.readFileSafe('svc.py')
+     → tasks.buildTask('test', {files})   # system+user 프롬프트
+     → ollama-client.chat(...)    # POST /api/chat (stream=false)
+4. Ollama 가 코드 생성 → {content, prompt_eval_count, eval_count, total_duration}
+5. util.extractCode(content)      # ```펜스 제거, <think> 제거
+6. logger.estimateSavings + logUsage  # ~/.tokenlift/usage.jsonl 기록
+7. 출력:
+     stdout = 저장 경로(또는 코드 본문)   ← Claude 가 받음
+     stderr = model/토큰/시간/절감 추정    ← 메타(결과 비오염)
+8. Claude 가 결과 검토 후 통합
+```
+
+## 2.4 입출력 계약 (설계 핵심)
+
+브리지는 **stdout 을 순수 결과물 전용**으로 사용한다. 이것이 Claude 통합의 핵심이다.
+
+| 모드 | stdout | stderr |
+|---|---|---|
+| 코드 태스크(기본) | 코드펜스 제거된 순수 코드 | model·토큰·시간·절감 |
+| `-o`/`--apply` | 저장된 파일 경로 | 동일 |
+| 분석 태스크 | 텍스트(요약/리뷰) | 동일 |
+| `--json` | 전체 메타 포함 JSON | (없음) |
+| `--quiet` | 결과물 | (억제) |
+
+→ Claude 는 stdout 만 신뢰해 받으면 되고, 메타는 노이즈로 섞이지 않는다.
+
+## 2.5 주요 설계 결정
+
+| 결정 | 선택 | 이유 / 트레이드오프 |
+|---|---|---|
+| 위임 방식 | **외부 CLI 셸아웃** | 생성이 로컬에서 일어나야 Bedrock 토큰이 실제로 절감됨. 서브에이전트만으론 여전히 Claude 가 생성 → 절감 안 됨 |
+| 런타임 | **Node ESM, 무의존성** | Node 18+ 내장 `fetch` 사용. 설치 마찰 최소화, 공급망 위험 0 |
+| 출력 채널 분리 | **stdout=결과 / stderr=메타** | Claude 가 결과만 깔끔히 캡처 |
+| 라우팅 | **설정 기반 task→model 매핑** | 사내 모델 구성에 맞게 JSON 만 수정 |
+| 자동 위임 판단 | **키워드 휴리스틱(LLM 미사용)** | 즉시·무비용. 정밀도는 낮으나 안전(애매하면 Claude) |
+| 절감 측정 | **로컬 처리 토큰 × Bedrock 단가** | 단순·투명. gross 추정임을 명시 |
+| 실패 처리 | **친절한 에러 + Claude fallback** | Ollama 다운 시 작업이 막히지 않음 |
+
+## 2.6 의존성 / 상호작용
+
+- **외부 런타임**: Ollama (필수). 없으면 `doctor`/`chat` 이 친절한 오류 반환.
+- **외부 패키지**: 없음. Node 표준 라이브러리만 사용.
+- **상태**: `~/.tokenlift/usage.jsonl`(로그), `~/.tokenlift/config.json`(개인 설정, 선택).
+- **Claude Code**: 스킬/에이전트/훅 파일을 `~/.claude/` 하위로 배포(설치 스크립트).
+
+## 2.7 확장 지점
+
+- **새 태스크 추가**: `tasks.mjs` 에 케이스 + `router.byTask` 매핑 + `bin` 디스패치.
+- **새 모델 라우팅**: `config.routing.byTask` 수정만으로 적용.
+- **원격 Ollama/사내 게이트웨이**: `OLLAMA_HOST` 또는 `--host` 로 지정.
+- **다른 백엔드(vLLM 등 OpenAI 호환)**: `ollama-client.mjs` 를 어댑터로 교체 가능.

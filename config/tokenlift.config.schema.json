@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TokenLift 설정",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "ollama": {
+      "type": "object",
+      "properties": {
+        "host": { "type": "string", "description": "Ollama 엔드포인트 URL" },
+        "timeoutMs": { "type": "integer", "minimum": 1000, "description": "요청 타임아웃(ms)" },
+        "keepAlive": { "type": "string", "description": "모델 메모리 상주 시간(예: 30m)" },
+        "numCtx": { "type": "integer", "minimum": 512, "description": "기본 컨텍스트 윈도우 토큰" }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "properties": {
+        "default": { "type": "string" },
+        "byTask": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "fallback": { "type": "string" }
+      },
+      "required": ["default"]
+    },
+    "pricing": {
+      "type": "object",
+      "description": "절감 추정용 Bedrock 단가(USD per 1M tokens)",
+      "properties": {
+        "label": { "type": "string" },
+        "inputPer1M": { "type": "number", "minimum": 0 },
+        "outputPer1M": { "type": "number", "minimum": 0 }
+      }
+    },
+    "thresholds": {
+      "type": "object",
+      "properties": {
+        "delegateMinOutputLines": { "type": "integer", "minimum": 0 },
+        "delegateMinFileLines": { "type": "integer", "minimum": 0 },
+        "delegateMinFiles": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "generation": {
+      "type": "object",
+      "properties": {
+        "temperature": { "type": "number", "minimum": 0, "maximum": 2 },
+        "topP": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "logging": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "file": { "type": "string" }
+      }
+    }
+  }
+}

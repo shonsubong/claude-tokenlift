@@ -1,0 +1,24 @@
+{
+  "name": "tokenlift",
+  "version": "0.1.0",
+  "description": "Claude Code(Bedrock)의 고비용 토큰 작업을 로컬 Ollama 코드 특화 LLM으로 위임하는 브리지 CLI",
+  "type": "module",
+  "bin": {
+    "tokenlift": "bin/tokenlift.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "doctor": "node bin/tokenlift.mjs doctor",
+    "models": "node bin/tokenlift.mjs models"
+  },
+  "keywords": [
+    "ollama",
+    "claude-code",
+    "bedrock",
+    "token-optimization",
+    "llm-routing"
+  ],
+  "license": "MIT"
+}

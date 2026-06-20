@@ -1,0 +1,109 @@
+# TokenLift CLI 전체 참조
+
+`tokenlift` 는 로컬 Ollama 에 코딩 작업을 위임하는 무의존성 Node CLI 다.
+
+## 설치 / 호출 방법
+
+세 가지 방법 중 하나로 호출한다.
+
+1. **글로벌 명령 (권장)** — 저장소에서 한 번 링크하면 어디서나 `tokenlift` 사용:
+   ```bash
+   cd <설치경로>/TokenLift && npm link
+   tokenlift doctor
+   ```
+2. **직접 실행** — 링크 없이:
+   ```bash
+   node "<설치경로>/TokenLift/bin/tokenlift.mjs" doctor
+   ```
+3. **환경변수 경로** — `TOKENLIFT_HOME` 지정 후:
+   ```bash
+   node "$TOKENLIFT_HOME/bin/tokenlift.mjs" doctor   # bash
+   node "$env:TOKENLIFT_HOME\bin\tokenlift.mjs" doctor   # PowerShell
+   ```
+
+## 입출력 계약 (Claude 가 알아야 할 핵심)
+
+- **stdout = 결과물만.** 코드 태스크는 코드펜스가 제거된 순수 코드, 분석 태스크는 텍스트.
+  → Claude 는 stdout 을 그대로 받아 사용/통합하면 된다.
+- **stderr = 메타정보.** 사용 모델, 토큰 in/out, 소요시간, 절감 추정액. 결과물을 오염시키지 않음.
+- `-o <path>` 또는 `--apply` 사용 시 stdout 에는 **저장된 파일 경로**가 출력된다.
+- `--json` 사용 시 stdout 에 `{task, model, payload, inTokens, outTokens, estimate, ...}` JSON.
+
+## 명령 목록
+
+### 코딩 위임 (stdout = 코드)
+| 명령 | 용도 | 대표 예시 |
+|---|---|---|
+| `gen` | 명세로 새 코드 생성 | `tokenlift gen "JWT 미들웨어" --lang ts` |
+| `edit` | 파일을 지시대로 수정(전체 반환) | `tokenlift edit "널체크 추가" -f a.js --apply` |
+| `test` | 단위 테스트 생성 | `tokenlift test -f svc.py -o tests/test_svc.py` |
+| `refactor` | 동작 보존 리팩터링 | `tokenlift refactor "함수 분리" -f big.js --apply` |
+| `translate` | 언어/프레임워크 이식 | `tokenlift translate -f a.py --lang python --to go` |
+| `complete` | FIM(중간 코드 채우기) | `tokenlift complete --prefix "def f(" --suffix "):"` |
+
+### 분석/문서 (stdout = 텍스트)
+| 명령 | 용도 | 대표 예시 |
+|---|---|---|
+| `explain` | 코드/로그 요약·설명 (입력토큰 절감) | `tokenlift explain -f huge.ts "데이터 흐름"` |
+| `review` | 로컬 코드 리뷰 | `tokenlift review -f patch.diff` |
+| `docs` | 문서/주석 생성 | `tokenlift docs "API 사용법" -f api.ts` |
+| `ask` | 임의 프롬프트 | `tokenlift ask "이 정규식 의미"` |
+
+### 라우팅/운영
+| 명령 | 용도 |
+|---|---|
+| `route "<설명>"` | 위임 여부 + 태스크 + 모델 추천 (`--json` 가능) |
+| `models` | 설치된 모델 목록 + task→model 매핑 + 설치 여부 |
+| `doctor` | Node/설정/Ollama 연결/필수 모델 점검 |
+| `warmup -m <model>` | 모델을 메모리에 선적재(연속 위임 전 권장) |
+| `stats` | 누적 위임 횟수·토큰·Bedrock 환산 절감액 |
+| `help` | 도움말 |
+
+## 플래그
+
+| 플래그 | 의미 |
+|---|---|
+| `-m, --model <name>` | 사용할 Ollama 모델 강제 지정(라우팅 무시) |
+| `-f, --file <path>` | 입력 파일(여러 번 반복 가능) |
+| `-o, --out <path>` | 결과를 파일로 저장(stdout 엔 경로) |
+| `--apply` | (edit/refactor) 단일 입력파일에 결과를 덮어쓰기 |
+| `--lang <l>` | 소스 언어 힌트 |
+| `--to <l>` | (translate) 대상 언어 / (complete) suffix |
+| `--prefix`, `--suffix` | (complete) FIM 접두/접미 |
+| `--host <url>` | Ollama 호스트 (기본 `http://localhost:11434`) |
+| `--timeout <ms>` | 요청 타임아웃(기본 600000) |
+| `--temp <n>` | temperature (기본 0.1) |
+| `--num-ctx <n>` | 컨텍스트 윈도우 토큰 수 |
+| `--json` | 기계 판독용 JSON 출력 |
+| `-q, --quiet` | stderr 메타 출력 억제 |
+| `--no-log` | 사용량 로깅 비활성화 |
+
+## 환경변수
+
+| 변수 | 효과 |
+|---|---|
+| `OLLAMA_HOST` / `TOKENLIFT_HOST` | Ollama 호스트 |
+| `TOKENLIFT_MODEL` | 기본 모델 오버라이드 |
+| `TOKENLIFT_TIMEOUT_MS` | 기본 타임아웃 |
+| `TOKENLIFT_NO_LOG=1` | 로깅 비활성화 |
+| `TOKENLIFT_HOME` | 직접 실행 시 저장소 경로 |
+
+## 설정 파일
+
+우선순위(낮음→높음): 내장 기본값 < `config/tokenlift.config.json`(팀 기본) < `~/.tokenlift/config.json`(개인) < 환경변수.
+모델 매핑, 단가(`pricing`), 임계값, 로깅 위치를 여기서 조정한다. 자세한 키는 `docs/05-implementation.md` 참조.
+
+## Claude 사용 패턴 예시
+
+```bash
+# 1) 연속 위임 전 워밍업
+tokenlift warmup -m qwen2.5-coder:14b
+
+# 2) 테스트 생성을 위임하고 파일로 저장
+tokenlift test -f src/payment.ts -o src/payment.test.ts
+#  → Claude 는 저장된 테스트를 Read 로 검토 후 필요한 부분만 보정
+
+# 3) 대용량 로그 요약(입력 토큰 절감)
+tokenlift explain -f build_error.log "실패 원인 후보만 5줄로"
+#  → Claude 는 원문 수천 줄 대신 요약만 받아 판단
+```

@@ -1,0 +1,47 @@
+{
+  "$schema": "./tokenlift.config.schema.json",
+  "ollama": {
+    "host": "http://localhost:11434",
+    "timeoutMs": 600000,
+    "keepAlive": "30m",
+    "numCtx": 8192
+  },
+  "routing": {
+    "default": "qwen2.5-coder:14b",
+    "byTask": {
+      "gen": "qwen2.5-coder:14b",
+      "edit": "qwen2.5-coder:14b",
+      "test": "qwen2.5-coder:14b",
+      "refactor": "qwen2.5-coder:14b",
+      "translate": "qwen2.5-coder:14b",
+      "explain": "qwen2.5-coder:14b",
+      "review": "deepcoder:latest",
+      "agent": "devstral:24b",
+      "reason": "deepseek-r1:14b",
+      "docs": "gemma3:12b",
+      "fast": "gemma3:4b",
+      "complete": "qwen2.5-coder:1.5b-base"
+    },
+    "fallback": "gemma3:4b"
+  },
+  "pricing": {
+    "note": "위임으로 절감되는 금액 추정용. 사내 Bedrock 단가에 맞춰 수정하세요. (USD per 1M tokens)",
+    "label": "claude-sonnet-on-bedrock",
+    "inputPer1M": 3.0,
+    "outputPer1M": 15.0
+  },
+  "thresholds": {
+    "comment": "Claude가 자동 위임 여부를 판단할 때 참고하는 휴리스틱 임계값",
+    "delegateMinOutputLines": 30,
+    "delegateMinFileLines": 300,
+    "delegateMinFiles": 3
+  },
+  "generation": {
+    "temperature": 0.1,
+    "topP": 0.9
+  },
+  "logging": {
+    "enabled": true,
+    "file": "~/.tokenlift/usage.jsonl"
+  }
+}
