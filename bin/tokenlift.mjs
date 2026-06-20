@@ -7,7 +7,7 @@ import {
   getProviderProfile, createProvider, resolveProviderName, listProviderNames,
 } from '../src/providers/index.mjs';
 import { buildTask, TASK_LIST } from '../src/tasks.mjs';
-import { pickModel, recommend } from '../src/router.mjs';
+import { pickModel, recommend, resolveRole, costTier } from '../src/router.mjs';
 import { estimateSavings, logUsage, readStats, formatStats } from '../src/logger.mjs';
 import {
   readFileSafe, writeFileSafe, extractCode, stripThink,
@@ -69,7 +69,8 @@ const HELP = `tokenlift v${VERSION} — 로컬/온프렘 LLM 위임 브리지
   ask        임의 프롬프트              예) tokenlift ask "정규식 설명"
 
 라우팅/운영 명령:
-  route      위임 여부/모델 추천         예) tokenlift route "전체 결제 모듈 보안 설계"
+  route      위임 여부/역할/모델 추천    예) tokenlift route "전체 결제 모듈 보안 설계"
+  roles      에이전트 역할 → 백엔드 + 에스컬레이션 사다리
   models     모델 목록 + 라우팅 매핑     (활성 provider 기준)
   providers  설정된 백엔드 목록
   stats      누적 절감 통계
@@ -78,7 +79,8 @@ const HELP = `tokenlift v${VERSION} — 로컬/온프렘 LLM 위임 브리지
   help       이 도움말
 
 옵션:
-  -p, --provider <name>  백엔드 선택 (ollama | nemoclaw | ...). 기본 config.provider
+  -p, --provider <name>  백엔드 선택 (ollama | nemoclaw | onprem-h200 | onprem-v100 ...)
+      --role <name>      역할로 백엔드 자동 선택 (coder=V100 | oracle=H200). --provider 우선
   -m, --model <name>     모델 강제 지정(라우팅 무시)
   -f, --file <path>      입력 파일(여러 번 가능)
   -o, --out <path>       결과를 파일로 저장
@@ -95,9 +97,23 @@ const HELP = `tokenlift v${VERSION} — 로컬/온프렘 LLM 위임 브리지
       --no-log           사용량 로깅 비활성화
 `;
 
-// 활성 provider 프로파일/어댑터 구성 (--provider, --host, --timeout 반영)
+// 활성 provider 프로파일/어댑터 구성 (--role, --provider, --host, --timeout 반영)
 function buildActiveProvider(config, flags) {
-  const providerName = resolveProviderName(config, flags.provider);
+  // --role 이 있으면 역할 → 비용최적 provider 로 해석(명시 --provider 가 우선)
+  let providerName = resolveProviderName(config, flags.provider);
+  if (flags.role && !flags.provider) {
+    const role = resolveRole(config, flags.role);
+    if (!role) {
+      eprint(`알 수 없는 역할: '${flags.role}'. roles: ${Object.keys(config.roles || {}).join(', ')}`);
+      process.exit(2);
+    }
+    if (!role.callable) {
+      eprint(`역할 '${flags.role}' 은 '${role.provider}' 가 담당 — tokenlift 위임 대상이 아닙니다(Claude/그래프가 직접 처리).`);
+      process.exit(2);
+    }
+    providerName = role.provider;
+    if (role.model && !flags.model) flags.model = role.model;
+  }
   const profile = getProviderProfile(config, providerName);
   if (flags.host) profile.host = flags.host;
   const timeoutMs = Number(flags.timeout) || profile.timeoutMs || config.ollama?.timeoutMs || 600000;
@@ -119,6 +135,7 @@ async function main() {
 
   // 운영 명령 분기
   if (cmd === 'stats') return console.log(formatStats(readStats(config)));
+  if (cmd === 'roles') return cmdRoles(config);
   if (cmd === 'providers') return cmdProviders(config, flags);
   if (cmd === 'models') return cmdModels(config, flags);
   if (cmd === 'doctor') return cmdDoctor(config, flags);
@@ -227,6 +244,20 @@ async function main() {
 }
 
 // ---------- 서브명령 구현 ----------
+function cmdRoles(config) {
+  console.log('# 에이전트 역할 → 백엔드 (oh-my-openagent 식 오케스트레이터-워커)');
+  for (const [name, r] of Object.entries(config.roles || {})) {
+    const role = resolveRole(config, name);
+    const tag = role.callable ? 'CLI 위임' : (r.provider === 'claude' ? 'Bedrock(직접)' : '그래프(MCP)');
+    console.log(`  ${name.padEnd(9)} → ${String(r.provider).padEnd(18)} [${tag}]`);
+    if (r.desc) console.log(`  ${' '.repeat(9)}   ${r.desc}`);
+  }
+  console.log('\n# 비용 최소화 에스컬레이션 사다리 (싼 → 비싼)');
+  const ladder = config.escalation || [];
+  console.log('  ' + ladder.map((p, i) => `${i + 1}.${p}`).join('  →  '));
+  console.log('\n사용: tokenlift <task> --role coder|oracle   (역할로 백엔드 자동 선택)');
+}
+
 function cmdProviders(config, flags) {
   const active = resolveProviderName(config, flags.provider);
   console.log('# 설정된 백엔드(provider)');
@@ -319,17 +350,20 @@ async function cmdRoute(config, flags) {
     eprint('작업 설명을 입력하세요. 예) tokenlift route "결제 모듈 테스트 코드 작성"');
     process.exit(2);
   }
-  const providerName = resolveProviderName(config, flags.provider);
-  const rec = recommend(desc, config, providerName);
+  // route 추천은 명시 --provider 가 없으면 역할 기반 비용최적 백엔드를 제안
+  const rec = recommend(desc, config, flags.provider);
   if (flags.json) return console.log(JSON.stringify(rec, null, 2));
   console.log(`라우팅 추천: ${rec.route.toUpperCase()}${rec.task ? ` (task=${rec.task})` : ''}`);
+  if (rec.role) console.log(`역할: ${rec.role}`);
   if (rec.provider) console.log(`권장 백엔드: ${rec.provider}`);
   if (rec.model) console.log(`권장 모델: ${rec.model}`);
+  if (rec.tier) console.log(`비용 티어: ${rec.tier.tier}/${rec.tier.of} (1=가장 쌈)`);
   console.log(`신뢰도: ${rec.confidence}`);
   console.log(`근거: ${rec.reason}`);
   if (rec.route === 'local' && rec.task) {
-    const pf = rec.provider && rec.provider !== 'ollama' ? ` --provider ${rec.provider}` : '';
-    console.log(`\n실행 예: tokenlift ${rec.task} "<지시>" -f <파일>${pf} -m ${rec.model}`);
+    console.log(`\n실행 예: tokenlift ${rec.task} "<지시>" -f <파일> --role ${rec.role}`);
+  } else {
+    console.log(`\n→ Claude(Bedrock)가 직접 처리. 현황 파악은 codebase-memory-mcp 그래프로.`);
   }
 }
 

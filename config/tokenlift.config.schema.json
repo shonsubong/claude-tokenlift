@@ -57,6 +57,24 @@
       },
       "required": ["default"]
     },
+    "roles": {
+      "type": "object",
+      "description": "에이전트 역할 → 백엔드 매핑(오케스트레이터-워커 협업). 'claude'/'codebase-memory-mcp' 는 가이드 라벨.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "provider": { "type": "string", "description": "역할이 사용할 provider 또는 라벨(claude/codebase-memory-mcp)" },
+          "model": { "type": "string", "description": "(선택) 모델 강제" },
+          "desc": { "type": "string" }
+        },
+        "required": ["provider"]
+      }
+    },
+    "escalation": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "비용 최소화 에스컬레이션 사다리(싼→비싼). 충분한 가장 싼 단계를 먼저 사용."
+    },
     "pricing": {
       "type": "object",
       "description": "절감 추정용 Bedrock 단가(USD per 1M tokens)",

@@ -37,11 +37,14 @@ rm -rf "$SKILL_DST"
 cp -r "$REPO_ROOT/skills/tokenlift" "$SKILL_DST"
 echo "  스킬 배포 완료 → $SKILL_DST"
 
-# 3) 서브에이전트 배포
-AGENT_DST="$AGENTS_DIR/ollama-delegate.md"
-backup_if_exists "$AGENT_DST" "ollama-delegate.md"
-cp "$REPO_ROOT/agents/ollama-delegate.md" "$AGENT_DST"
-echo "  서브에이전트 배포 완료 → $AGENT_DST"
+# 3) 서브에이전트 배포 (agents/*.md 전체)
+for agent_src in "$REPO_ROOT"/agents/*.md; do
+  agent_name="$(basename "$agent_src")"
+  agent_dst="$AGENTS_DIR/$agent_name"
+  backup_if_exists "$agent_dst" "$agent_name"
+  cp "$agent_src" "$agent_dst"
+  echo "  서브에이전트 배포 완료 → $agent_dst"
+done
 
 # 4) CLI 전역 등록 (실패해도 계속)
 echo ""

@@ -32,8 +32,61 @@
           "fast": "meta/llama-3.1-8b-instruct"
         }
       }
+    },
+    "onprem-h200": {
+      "type": "openai-compat",
+      "host": "http://h200.internal:8000",
+      "apiPath": "/v1",
+      "apiKeyEnv": "ONPREM_API_KEY",
+      "supportsFIM": false,
+      "models": [],
+      "_comment": "H200 x8 (FP8/대형 MoE). Oracle 역할: 어려운 추론·대형 생성. 모델명은 실제 배포로 교체.",
+      "routing": {
+        "default": "deepseek-ai/DeepSeek-R1",
+        "byTask": {
+          "reason": "deepseek-ai/DeepSeek-R1",
+          "agent": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "gen": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "refactor": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "test": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "translate": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+          "review": "deepseek-ai/DeepSeek-R1",
+          "explain": "Qwen/Qwen3-235B-A22B-Instruct",
+          "docs": "Qwen/Qwen3-235B-A22B-Instruct"
+        }
+      }
+    },
+    "onprem-v100": {
+      "type": "openai-compat",
+      "host": "http://v100.internal:8000",
+      "apiPath": "/v1",
+      "apiKeyEnv": "ONPREM_API_KEY",
+      "supportsFIM": false,
+      "models": [],
+      "_comment": "V100 x8 (FP16 전용, bf16/FP8 미지원 — FP16 또는 AWQ/GPTQ INT4). Coder 역할: 대량·최저가.",
+      "routing": {
+        "default": "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "byTask": {
+          "gen": "Qwen/Qwen2.5-Coder-32B-Instruct",
+          "edit": "Qwen/Qwen2.5-Coder-32B-Instruct",
+          "test": "Qwen/Qwen2.5-Coder-32B-Instruct",
+          "refactor": "Qwen/Qwen2.5-Coder-32B-Instruct",
+          "translate": "Qwen/Qwen2.5-Coder-32B-Instruct",
+          "docs": "meta-llama/Llama-3.1-8B-Instruct",
+          "explain": "meta-llama/Llama-3.1-8B-Instruct",
+          "fast": "meta-llama/Llama-3.1-8B-Instruct"
+        }
+      }
     }
   },
+  "roles": {
+    "lead": { "provider": "claude", "desc": "오케스트레이션·계획·위임·통합 (Bedrock, 외부)" },
+    "explorer": { "provider": "codebase-memory-mcp", "desc": "코드 탐색/검색/영향분석 (그래프, 무료)" },
+    "coder": { "provider": "onprem-v100", "desc": "보일러플레이트·테스트·리팩터·이식 (최저가 GPU)" },
+    "oracle": { "provider": "onprem-h200", "desc": "어려운 디버깅·알고리즘·대형 생성 (프런티어 오픈)" },
+    "reviewer": { "provider": "claude", "desc": "보안·최종 검토·의사결정 (Bedrock)" }
+  },
+  "escalation": ["codebase-memory-mcp", "onprem-v100", "onprem-h200", "claude"],
   "routing": {
     "default": "qwen2.5-coder:14b",
     "byTask": {

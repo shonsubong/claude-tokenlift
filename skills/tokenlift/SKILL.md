@@ -46,6 +46,35 @@ Claude 의 역할은 **오케스트레이션 + 판단 + 검토**로 축소된다
 상세 도구·예시는 `reference/codebase-memory.md` 참조. 이렇게 모은 "정확한 컨텍스트"를 필요 시
 생성 위임(아래)의 입력으로 넘기면 입력·출력 토큰을 동시에 아낀다.
 
+## 에이전트 협업 & 멀티모델 라우팅 (역할 분담)
+
+[oh-my-openagent](https://github.com/code-yeongyu/oh-my-openagent) 식 **오케스트레이터-워커**
+모델. **Claude(Bedrock)는 "AI 팀 리드"** 로서 직접 다 하지 않고 컨텍스트를 린하게 유지하며
+싸고 빠른 백엔드에 위임한다. 제약: 외부 모델은 **Claude=Bedrock 전용**, 온프렘은 **H200×8 /
+V100×8** 로 오픈모델을 서빙(OpenAI 호환). 비용은 항상 **가장 싼 충분한 단계**부터.
+
+| 역할 | 백엔드 | 담당 | CLI |
+|---|---|---|---|
+| **lead** (오케스트레이터) | Claude (Bedrock) | 의도파악·계획·위임·통합 | (Claude 자신) |
+| **explorer** | codebase-memory-mcp | 코드 탐색/검색/영향분석 | MCP 그래프 |
+| **coder** | onprem-**V100** | 보일러플레이트·테스트·리팩터·이식(대량·최저가) | `--role coder` |
+| **oracle** | onprem-**H200** | 어려운 디버깅·알고리즘·대형 생성(프런티어 오픈) | `--role oracle` |
+| **reviewer** | Claude (Bedrock) | 보안·최종 검토·의사결정 | (Claude 자신) |
+
+**비용 최소화 에스컬레이션 사다리** (싼 → 비싼):
+`그래프(무료) → V100(coder) → H200(oracle) → Bedrock(claude)`.
+충분히 처리되는 가장 싼 단계에서 멈춘다. 한 단계가 막히면(품질 부족/반복 실패) 다음 단계로
+승급. **Bedrock 은 최후**(판단·보안·최종검토 전용).
+
+규칙:
+- 대량/정형 생성 → `--role coder`(V100). 어려운 추론·대규모·알고리즘·성능/동시성 →
+  `--role oracle`(H200). `tokenlift route "<작업>"` 가 역할·티어를 추천한다.
+- 여러 작업은 **병렬 위임**으로 메인 컨텍스트를 아낀다(`ollama-delegate`/`onprem-oracle`
+  서브에이전트로 격리 실행 가능).
+- 막혔을 때 Claude 가 계속 헛도는 대신 **oracle(H200)에 전략 백업**을 요청(OmO 의 "GPT 5.2
+  전략 백업"을 온프렘 프런티어 오픈모델로 대체).
+- 현재 팀 구성은 `tokenlift roles`, 백엔드는 `tokenlift providers` 로 확인.
+
 ## 위임 판단 규칙 (가장 중요)
 
 | 작업 성격 | 처리 주체 | 이유 |

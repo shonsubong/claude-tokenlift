@@ -52,7 +52,8 @@
 ### 라우팅/운영
 | 명령 | 용도 |
 |---|---|
-| `route "<설명>"` | 위임 여부 + 태스크 + 백엔드/모델 추천 (`--json` 가능) |
+| `route "<설명>"` | 위임 여부 + 역할 + 백엔드/모델 + 비용티어 추천 (`--json` 가능) |
+| `roles` | 에이전트 역할→백엔드 매핑 + 비용 에스컬레이션 사다리 |
 | `providers` | 설정된 백엔드(provider) 목록 + 활성 표시 |
 | `models` | (활성 provider) 모델 목록 + task→model 매핑 |
 | `doctor` | Node/설정/백엔드 연결/필수 모델 점검 (`--provider` 가능) |
@@ -64,7 +65,8 @@
 
 | 플래그 | 의미 |
 |---|---|
-| `-p, --provider <name>` | 백엔드 선택 (`ollama` 기본 / `nemoclaw` 등). 미지정 시 `config.provider` |
+| `-p, --provider <name>` | 백엔드 선택 (`ollama`/`nemoclaw`/`onprem-h200`/`onprem-v100`). 미지정 시 `config.provider` |
+| `--role <name>` | 역할로 백엔드 자동 선택 (`coder`=V100 / `oracle`=H200). `--provider` 가 우선 |
 | `-m, --model <name>` | 사용할 모델 강제 지정(라우팅 무시). 모델명은 백엔드별로 다름 |
 | `-f, --file <path>` | 입력 파일(여러 번 반복 가능) |
 | `-o, --out <path>` | 결과를 파일로 저장(stdout 엔 경로) |
@@ -80,18 +82,23 @@
 | `-q, --quiet` | stderr 메타 출력 억제 |
 | `--no-log` | 사용량 로깅 비활성화 |
 
-## 백엔드(provider)
+## 백엔드(provider) & 에이전트 역할
 
-| 타입 | 대상 | 모델명 예시 |
-|---|---|---|
-| `ollama` | 로컬 Ollama | `qwen2.5-coder:14b` |
-| `openai-compat` | NemoClaw/NIM, vLLM, TGI, LocalAI | `qwen/qwen2.5-coder-32b-instruct` |
+| provider | 대상 | 역할 | 모델명 예시 |
+|---|---|---|---|
+| `ollama` | 로컬 Ollama | (보조 coder) | `qwen2.5-coder:14b` |
+| `onprem-v100` | V100×8 (FP16) | **coder**(대량·최저가) | `Qwen/Qwen2.5-Coder-32B-Instruct` |
+| `onprem-h200` | H200×8 (FP8/MoE) | **oracle**(어려운/대형) | `deepseek-ai/DeepSeek-R1` |
+| `nemoclaw` | NIM (OpenAI 호환) | (온프렘 대안) | `qwen/qwen2.5-coder-32b-instruct` |
 
 ```bash
-tokenlift providers                       # 설정된 백엔드 확인
-tokenlift gen "..." --provider nemoclaw   # 온프렘 NIM 으로 위임
+tokenlift roles                          # 역할→백엔드 + 비용 에스컬레이션 사다리
+tokenlift route "<작업>"                  # 역할/티어 추천
+tokenlift test -f a.ts --role coder      # V100 로 대량 위임
+tokenlift gen "알고리즘 구현" --role oracle # H200 로 어려운 작업 위임
 ```
-설정/모델/인증은 `docs/11-providers.md` 참조.
+비용 사다리: 그래프(무료) → V100(coder) → H200(oracle) → Bedrock(claude).
+설정/모델/인증은 `docs/11-providers.md`, 역할·GPU·비용은 `docs/13-multi-model-agents.md` 참조.
 
 ## 환경변수
 
@@ -103,6 +110,7 @@ tokenlift gen "..." --provider nemoclaw   # 온프렘 NIM 으로 위임
 | `TOKENLIFT_TIMEOUT_MS` | 기본 타임아웃 |
 | `TOKENLIFT_NO_LOG=1` | 로깅 비활성화 |
 | `NEMOCLAW_API_KEY` | nemoclaw Bearer 키(또는 `apiKeyEnv` 로 지정한 변수) |
+| `ONPREM_API_KEY` | onprem-h200 / onprem-v100 Bearer 키(인증 시) |
 | `TOKENLIFT_HOME` | 직접 실행 시 저장소 경로 |
 
 ## 설정 파일

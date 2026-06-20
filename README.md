@@ -11,16 +11,22 @@
    │
    ├─ 코드 탐색/이해/검색/영향분석  ──graph──►  codebase-memory-mcp   ← 입력 토큰 ~99%↓ (로컬)
    │
-   ├─ 대량/반복 코드 생성          ─tokenlift─►  Provider              ← 출력 토큰↓ (무료/온프렘)
-   │                                          ├─ ollama (로컬)
-   │                                          └─ nemoclaw (NIM, OpenAI 호환)
+   ├─ 대량/반복 코드 생성          ─tokenlift─►  온프렘 GPU            ← 출력 토큰↓ (한계비용≈전기)
+   │                                          ├─ V100×8  (coder, 대량·최저가)
+   │                                          ├─ H200×8  (oracle, 어려운/대형)
+   │                                          └─ ollama / nemoclaw(NIM)
    │
-   └─ 고난도 판단(설계/보안/디버깅) ──────────►  Claude (Bedrock)       ← 비싸지만 똑똑함
+   └─ 고난도 판단(설계/보안/디버깅) ──────────►  Claude (Bedrock 전용)  ← 비싸지만 똑똑함
                                           (두 위임 결과의 검토·통합도 Claude)
 ```
 
+**에이전트 팀(오케스트레이터-워커, oh-my-openagent 참조)** — Claude(lead)가 위임을 지휘하고,
+비용 최소화 사다리 `그래프(무료) → V100(coder) → H200(oracle) → Bedrock(claude)` 에서 충분한
+가장 싼 단계를 쓴다. `tokenlift roles` / `tokenlift route "<작업>"` 로 확인.
+
+- 멀티모델 에이전트 라우팅 → [13. 멀티모델 에이전트](docs/13-multi-model-agents.md)
 - 탐색 그래프 → [12. 코드 탐색 위임](docs/12-codebase-memory.md)
-- 생성 백엔드(provider 추상화, `--provider ollama|nemoclaw`) → [11. 백엔드 확장](docs/11-providers.md)
+- 생성 백엔드(provider 추상화, `--provider`/`--role`) → [11. 백엔드 확장](docs/11-providers.md)
 
 ## 왜 절감되는가 — 3개의 기둥
 
@@ -102,6 +108,7 @@ bash scripts/install.sh
 | 10 | [FAQ](docs/10-faq.md) | 자주 묻는 질문 |
 | 11 | [백엔드 확장](docs/11-providers.md) | Ollama / NemoClaw(NIM) provider 설정 |
 | 12 | [코드 탐색 위임](docs/12-codebase-memory.md) | codebase-memory-mcp 지식 그래프(기본) |
+| 13 | [멀티모델 에이전트](docs/13-multi-model-agents.md) | 역할·에스컬레이션·온프렘 H200/V100 |
 
 ## 요구사항
 
@@ -110,7 +117,9 @@ bash scripts/install.sh
   (단일 바이너리, 로컬). 없으면 탐색 기둥은 자동 생략(평소대로 Read/Grep).
 - **생성 백엔드 하나 이상**:
   - **Ollama 0.6+** (로컬/사내) + 코드 모델 (예: `qwen2.5-coder:14b`, `devstral:24b`)
-  - 또는 **OpenAI 호환 온프렘 서버**(NVIDIA NemoClaw/NIM, vLLM, TGI 등)
+  - 또는 **OpenAI 호환 온프렘 서버** — 사내 **H200×8(oracle)** / **V100×8(coder)** 클러스터를
+    vLLM/SGLang/TGI/NIM 으로 서빙(NVIDIA NemoClaw/NIM 포함). → [13. 멀티모델 에이전트](docs/13-multi-model-agents.md)
+- **외부 모델은 Claude=AWS Bedrock 전용** (오케스트레이션·판단·검토 담당)
 
 ## 한계 (정직한 고지)
 

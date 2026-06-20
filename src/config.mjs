@@ -41,7 +41,67 @@ const DEFAULTS = {
         },
       },
     },
+    // ── 온프렘 GPU 클러스터 (OpenAI 호환: vLLM / SGLang / TGI / NIM 로 서빙) ──
+    // H200 ×8 (≈1.1TB HBM3e, FP8/대형 MoE): 프런티어 오픈모델 = Oracle 역할(어려운 추론·대형 생성)
+    'onprem-h200': {
+      type: 'openai-compat',
+      host: 'http://h200.internal:8000', // 사내 H200 추론 엔드포인트로 교체
+      apiPath: '/v1',
+      apiKeyEnv: 'ONPREM_API_KEY',
+      supportsFIM: false,
+      models: [],
+      routing: {
+        // 예시명 — 실제 배포 모델로 교체. H200 는 FP8/대형 MoE 가능.
+        default: 'deepseek-ai/DeepSeek-R1',
+        byTask: {
+          reason: 'deepseek-ai/DeepSeek-R1',
+          agent: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+          gen: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+          refactor: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+          test: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+          translate: 'Qwen/Qwen3-Coder-480B-A35B-Instruct',
+          review: 'deepseek-ai/DeepSeek-R1',
+          explain: 'Qwen/Qwen3-235B-A22B-Instruct',
+          docs: 'Qwen/Qwen3-235B-A22B-Instruct',
+        },
+      },
+    },
+    // V100 ×8 (≈256GB @32GB, FP16 전용 — bf16/FP8 미지원): 중소 코드모델 = Coder 역할(대량·최저가)
+    'onprem-v100': {
+      type: 'openai-compat',
+      host: 'http://v100.internal:8000', // 사내 V100 추론 엔드포인트로 교체
+      apiPath: '/v1',
+      apiKeyEnv: 'ONPREM_API_KEY',
+      supportsFIM: false,
+      models: [],
+      routing: {
+        // 예시명 — V100 은 FP16 또는 AWQ/GPTQ INT4 양자화로 적재(FP8/bf16 불가).
+        default: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+        byTask: {
+          gen: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+          edit: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+          test: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+          refactor: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+          translate: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+          docs: 'meta-llama/Llama-3.1-8B-Instruct',
+          explain: 'meta-llama/Llama-3.1-8B-Instruct',
+          fast: 'meta-llama/Llama-3.1-8B-Instruct',
+        },
+      },
+    },
   },
+  // ── 에이전트 역할 → 백엔드 매핑 (oh-my-openagent 식 오케스트레이터-워커 협업) ──
+  // 'claude'(=Bedrock, 에이전트 자신)·'codebase-memory-mcp'(=그래프 MCP) 는 CLI 가 호출하지 않는
+  // 가이드용 라벨. 나머지는 실제 CLI provider.
+  roles: {
+    lead: { provider: 'claude', desc: '오케스트레이션·계획·위임·통합 (Bedrock, 외부)' },
+    explorer: { provider: 'codebase-memory-mcp', desc: '코드 탐색/검색/영향분석 (그래프, 무료)' },
+    coder: { provider: 'onprem-v100', desc: '보일러플레이트·테스트·리팩터·이식 (최저가 GPU)' },
+    oracle: { provider: 'onprem-h200', desc: '어려운 디버깅·알고리즘·대형 생성 (프런티어 오픈)' },
+    reviewer: { provider: 'claude', desc: '보안·최종 검토·의사결정 (Bedrock)' },
+  },
+  // 비용 최소화 에스컬레이션 사다리: 싼 것 → 비싼 것. 충분한 가장 싼 단계를 먼저 쓴다.
+  escalation: ['codebase-memory-mcp', 'onprem-v100', 'onprem-h200', 'claude'],
   routing: {
     default: 'qwen2.5-coder:14b',
     byTask: {

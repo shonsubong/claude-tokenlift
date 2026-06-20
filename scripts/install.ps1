@@ -37,12 +37,13 @@ if (Test-Path $skillDst) { Remove-Item $skillDst -Recurse -Force }
 Copy-Item $skillSrc $skillDst -Recurse -Force
 Write-Host "  스킬 배포 완료 → $skillDst" -ForegroundColor Green
 
-# 3) 서브에이전트 배포
-$agentSrc = Join-Path $RepoRoot 'agents\ollama-delegate.md'
-$agentDst = Join-Path $AgentsDir 'ollama-delegate.md'
-Backup-IfExists $agentDst 'ollama-delegate.md'
-Copy-Item $agentSrc $agentDst -Force
-Write-Host "  서브에이전트 배포 완료 → $agentDst" -ForegroundColor Green
+# 3) 서브에이전트 배포 (agents/*.md 전체)
+Get-ChildItem (Join-Path $RepoRoot 'agents') -Filter '*.md' | ForEach-Object {
+  $agentDst = Join-Path $AgentsDir $_.Name
+  Backup-IfExists $agentDst $_.Name
+  Copy-Item $_.FullName $agentDst -Force
+  Write-Host "  서브에이전트 배포 완료 → $agentDst" -ForegroundColor Green
+}
 
 # 4) CLI 전역 등록
 # 주의: 네이티브 명령(npm)은 try/catch 로 실패가 안 잡힌다. 반드시 $LASTEXITCODE 로 확인.
