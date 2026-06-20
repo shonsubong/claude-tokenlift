@@ -1,10 +1,14 @@
-// router.mjs - 모델 선택 + Claude vs Ollama 위임 판단 휴리스틱
+// router.mjs - 모델 선택 + Claude vs 로컬위임 판단 휴리스틱 (멀티프로바이더)
+import { getProviderProfile } from './providers/index.mjs';
 
-/** task 타입과 설정으로 사용할 Ollama 모델 결정 */
-export function pickModel(task, config, override) {
+/**
+ * task 와 provider 프로파일로 사용할 모델 결정.
+ * profileOrConfig 는 provider 프로파일(권장) 또는 (하위호환) 전체 config 를 받는다.
+ */
+export function pickModel(task, profileOrConfig, override) {
   if (override) return override;
-  const byTask = config.routing?.byTask || {};
-  return byTask[task] || config.routing?.default || 'qwen2.5-coder:14b';
+  const routing = profileOrConfig?.routing || {};
+  return (routing.byTask && routing.byTask[task]) || routing.default || 'qwen2.5-coder:14b';
 }
 
 // Claude(고급 추론)에 남겨야 하는 신호 키워드
@@ -32,16 +36,21 @@ const DELEGATE_TO_OLLAMA = {
 
 /**
  * 자연어 작업 설명을 받아 라우팅 추천.
- * @returns {{route:'ollama'|'claude', task, model, confidence, reason}}
+ * @param {string} description 작업 설명
+ * @param {object} config 전체 설정
+ * @param {string} [providerName] 대상 provider(미지정 시 config.provider)
+ * @returns {{route:'local'|'claude', provider, task, model, confidence, reason}}
  */
-export function recommend(description, config) {
+export function recommend(description, config, providerName) {
   const text = (description || '').toLowerCase();
+  const profile = getProviderProfile(config, providerName);
 
   // 1) Claude 유지 신호 우선
   for (const kw of KEEP_ON_CLAUDE) {
     if (text.includes(kw.toLowerCase())) {
       return {
         route: 'claude',
+        provider: null,
         task: null,
         model: null,
         confidence: 'high',
@@ -50,7 +59,7 @@ export function recommend(description, config) {
     }
   }
 
-  // 2) Ollama 위임 신호 탐지 (task 분류 포함)
+  // 2) 로컬 위임 신호 탐지 (task 분류 포함)
   let best = null;
   for (const [task, kws] of Object.entries(DELEGATE_TO_OLLAMA)) {
     for (const kw of kws) {
@@ -64,17 +73,19 @@ export function recommend(description, config) {
 
   if (best) {
     return {
-      route: 'ollama',
+      route: 'local',
+      provider: profile.name,
       task: best,
-      model: pickModel(best, config),
+      model: pickModel(best, profile),
       confidence: 'medium',
-      reason: `대량/반복 코딩 신호 → '${best}' 태스크로 Ollama 위임 권장`,
+      reason: `대량/반복 코딩 신호 → '${best}' 태스크로 '${profile.name}' 위임 권장`,
     };
   }
 
   // 3) 판단 불가 → 기본은 Claude (안전)
   return {
     route: 'claude',
+    provider: null,
     task: null,
     model: null,
     confidence: 'low',

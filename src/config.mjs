@@ -9,7 +9,39 @@ const PKG_CONFIG = path.join(__dirname, '..', 'config', 'tokenlift.config.json')
 const USER_CONFIG = expandHome('~/.tokenlift/config.json');
 
 const DEFAULTS = {
+  // 활성 백엔드(기본 ollama). 'nemoclaw' 등으로 바꾸거나 --provider 로 일회성 지정.
+  provider: 'ollama',
+  // 기본(ollama) 백엔드 설정 — 하위호환을 위해 최상위에 유지.
   ollama: { host: 'http://localhost:11434', timeoutMs: 600000, keepAlive: '30m', numCtx: 8192 },
+  // 추가 온프렘/원격 백엔드. 'ollama' 외 provider 는 여기에 정의한다.
+  providers: {
+    // NVIDIA NemoClaw / NIM (OpenAI 호환). 사내 엔드포인트/모델명/키로 교체할 것.
+    nemoclaw: {
+      type: 'openai-compat',
+      host: 'http://localhost:8000', // NIM 기본 포트. 사내 게이트웨이 주소로 변경
+      apiPath: '/v1',
+      apiKeyEnv: 'NEMOCLAW_API_KEY', // 이 환경변수에서 Bearer 키를 읽음(없으면 무인증)
+      supportsFIM: false, // /v1/completions(FIM) 지원 시 true
+      models: [], // /v1/models 미지원 게이트웨이면 여기에 모델명 나열
+      routing: {
+        // NIM 카탈로그 모델명 예시. 실제 배포된 모델명으로 교체 필수.
+        default: 'qwen/qwen2.5-coder-32b-instruct',
+        byTask: {
+          gen: 'qwen/qwen2.5-coder-32b-instruct',
+          edit: 'qwen/qwen2.5-coder-32b-instruct',
+          test: 'qwen/qwen2.5-coder-32b-instruct',
+          refactor: 'qwen/qwen2.5-coder-32b-instruct',
+          translate: 'qwen/qwen2.5-coder-32b-instruct',
+          explain: 'meta/llama-3.1-8b-instruct',
+          review: 'qwen/qwen2.5-coder-32b-instruct',
+          agent: 'nvidia/llama-3.1-nemotron-70b-instruct',
+          reason: 'nvidia/llama-3.1-nemotron-70b-instruct',
+          docs: 'meta/llama-3.1-8b-instruct',
+          fast: 'meta/llama-3.1-8b-instruct',
+        },
+      },
+    },
+  },
   routing: {
     default: 'qwen2.5-coder:14b',
     byTask: {
@@ -56,6 +88,7 @@ function applyEnv(cfg) {
   if (process.env.TOKENLIFT_MODEL) out.routing.default = process.env.TOKENLIFT_MODEL;
   if (process.env.TOKENLIFT_TIMEOUT_MS) out.ollama.timeoutMs = Number(process.env.TOKENLIFT_TIMEOUT_MS);
   if (process.env.TOKENLIFT_NO_LOG === '1') out.logging.enabled = false;
+  if (process.env.TOKENLIFT_PROVIDER) out.provider = process.env.TOKENLIFT_PROVIDER;
   return out;
 }
 

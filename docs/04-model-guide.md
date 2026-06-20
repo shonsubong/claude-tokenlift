@@ -84,4 +84,25 @@ ollama pull qwen2.5-coder:32b
 # 일회성: tokenlift gen "..." -m qwen2.5-coder:32b
 ```
 
+## 4.7 온프렘 NemoClaw / NIM 모델
+
+`--provider nemoclaw`(OpenAI 호환) 사용 시 모델명은 **NIM 카탈로그/배포 ID** 형식이다
+(Ollama 태그와 다름). 라우팅은 `config.providers.nemoclaw.routing` 에서 별도로 관리한다.
+
+| 용도 | NIM 모델 예시(배포에 맞게 교체) |
+|---|---|
+| 코드 생성/테스트/리팩터 | `qwen/qwen2.5-coder-32b-instruct` |
+| 대형/에이전트형 추론 | `nvidia/llama-3.1-nemotron-70b-instruct` |
+| 경량/요약/문서 | `meta/llama-3.1-8b-instruct` |
+
+```bash
+# 서버가 실제 제공하는 모델 확인
+tokenlift models --provider nemoclaw
+# 일회성 모델 지정
+tokenlift gen "..." --provider nemoclaw -m qwen/qwen2.5-coder-32b-instruct
+```
+
+> 기본값은 NVIDIA 카탈로그 **예시명**이다. 반드시 사내에 배포된 실제 모델 ID로 교체하라.
+> 자세한 설정은 [11. 백엔드 확장](11-providers.md).
+
 설치/구성 절차는 [08. 설치/설정](08-installation.md) 참조.

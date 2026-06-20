@@ -8,23 +8,55 @@
 |---|---|---|
 | `bin/tokenlift.mjs` | 인자 파싱·명령 디스패치·입출력 라우팅 | `main()` |
 | `src/config.mjs` | 설정 로딩/병합/메모이즈 | `loadConfig()`, `configPaths()` |
-| `src/ollama-client.mjs` | Ollama REST 호출 | `chat`, `generate`, `listModels`, `warmup`, `ping` |
-| `src/router.mjs` | 모델 선택·위임 추천 | `pickModel()`, `recommend()` |
+| `src/providers/index.mjs` | provider 프로파일 해석·어댑터 팩토리 | `getProviderProfile`, `createProvider`, `getProvider`, `resolveProviderName`, `listProviderNames` |
+| `src/providers/ollama.mjs` | Ollama 어댑터(통합 인터페이스) | `createOllamaProvider` |
+| `src/providers/openai-compat.mjs` | OpenAI 호환 어댑터(NemoClaw/NIM 등) | `createOpenAICompatProvider` |
+| `src/ollama-client.mjs` | Ollama REST 저수준 호출 | `chat`, `generate`, `listModels`, `warmup`, `ping` |
+| `src/router.mjs` | 모델 선택·위임 추천(provider 인지) | `pickModel()`, `recommend()` |
 | `src/tasks.mjs` | 태스크별 프롬프트 빌더 | `buildTask()`, `TASK_LIST` |
-| `src/logger.mjs` | 사용량 로깅·절감 추정·집계 | `estimateSavings`, `logUsage`, `readStats`, `formatStats` |
+| `src/logger.mjs` | 사용량 로깅·절감 추정·집계(provider별) | `estimateSavings`, `logUsage`, `readStats`, `formatStats` |
 | `src/util.mjs` | 파일IO·코드추출·stdin·포맷 | `extractCode`, `stripThink`, `readStdin`, ... |
+
+### Provider 통합 인터페이스
+
+모든 백엔드 어댑터는 동일 시그니처를 구현한다(상위 로직은 이것만 사용):
+
+```
+chat({model, messages, options, timeoutMs})            -> {content, inTokens, outTokens, durationMs, model, raw}
+generate({model, prompt, suffix, options, timeoutMs})  -> {...}   // FIM
+listModels({timeoutMs})                                -> [{name, ...}]
+warmup({model, timeoutMs})                             -> {model, durationMs}
+ping({timeoutMs})                                      -> boolean
+name, type, supportsFIM
+```
+
+`openai-compat` 어댑터는 응답을 정규화한다: `choices[0].message.content` → content,
+`usage.prompt_tokens/completion_tokens` → in/out 토큰, 소요시간은 wall-clock(`performance.now`).
+자세한 설정/확장은 [11. 백엔드 확장](11-providers.md).
 
 ## 5.2 설정 스키마 (`tokenlift.config.json`)
 
 ```jsonc
 {
-  "ollama": {
+  "provider": "ollama",               // 활성 백엔드(ollama | nemoclaw | ...)
+  "ollama": {                          // 기본(ollama) 백엔드 — 하위호환 위해 최상위 유지
     "host": "http://localhost:11434", // Ollama 엔드포인트
     "timeoutMs": 600000,              // 요청 타임아웃(대형 모델 콜드로드 대비)
     "keepAlive": "30m",              // 모델 메모리 상주 시간
     "numCtx": 8192                    // 기본 컨텍스트 윈도우
   },
-  "routing": {
+  "providers": {                       // 추가 백엔드 (ollama 외)
+    "nemoclaw": {                      // OpenAI 호환(NVIDIA NemoClaw/NIM 등)
+      "type": "openai-compat",
+      "host": "http://localhost:8000",
+      "apiPath": "/v1",
+      "apiKeyEnv": "NEMOCLAW_API_KEY", // 이 환경변수에서 Bearer 키
+      "supportsFIM": false,
+      "models": [],                    // /v1/models 미지원 시 수동 목록
+      "routing": { "default": "qwen/qwen2.5-coder-32b-instruct", "byTask": { "...": "..." } }
+    }
+  },
+  "routing": {                         // ollama 의 라우팅(하위호환)
     "default": "qwen2.5-coder:14b",  // task 매핑 없을 때
     "byTask": { "gen": "qwen2.5-coder:14b", "...": "..." },
     "fallback": "gemma3:4b"          // (예비) 라우팅 실패 대비
@@ -60,6 +92,8 @@
 | `TOKENLIFT_MODEL` | `routing.default` |
 | `TOKENLIFT_TIMEOUT_MS` | `ollama.timeoutMs` |
 | `TOKENLIFT_NO_LOG=1` | `logging.enabled=false` |
+| `TOKENLIFT_PROVIDER` | `provider` (활성 백엔드) |
+| `NEMOCLAW_API_KEY`* | nemoclaw Bearer 키 (*`apiKeyEnv` 로 변경 가능) |
 
 ## 5.3 Ollama 클라이언트
 

@@ -63,6 +63,7 @@ export function readStats(config) {
     grossUsd: 0,
     byTask: {},
     byModel: {},
+    byProvider: {},
   };
   for (const e of entries) {
     agg.inTokens += e.inTokens || 0;
@@ -76,6 +77,10 @@ export function readStats(config) {
     if (e.model) {
       agg.byModel[e.model] = (agg.byModel[e.model] || 0) + 1;
     }
+    const prov = e.provider || 'ollama';
+    agg.byProvider[prov] = agg.byProvider[prov] || { count: 0, grossUsd: 0 };
+    agg.byProvider[prov].count++;
+    agg.byProvider[prov].grossUsd += e.grossUsd || 0;
   }
   return agg;
 }
@@ -90,6 +95,10 @@ export function formatStats(agg) {
   lines.push(`로컬 처리 토큰: 입력 ${agg.inTokens.toLocaleString()} / 출력 ${agg.outTokens.toLocaleString()}`);
   lines.push(`Bedrock 환산 대체비용(누적, gross): ${fmtUsd(agg.grossUsd)}`);
   lines.push('');
+  lines.push('백엔드(provider)별:');
+  for (const [p, v] of Object.entries(agg.byProvider).sort((a, b) => b[1].grossUsd - a[1].grossUsd)) {
+    lines.push(`  - ${p}: ${v.count}회, ${fmtUsd(v.grossUsd)}`);
+  }
   lines.push('태스크별:');
   for (const [t, v] of Object.entries(agg.byTask).sort((a, b) => b[1].grossUsd - a[1].grossUsd)) {
     lines.push(`  - ${t}: ${v.count}회, ${fmtUsd(v.grossUsd)}`);

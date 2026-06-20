@@ -126,11 +126,46 @@ $env:OLLAMA_HOST="http://ollama.internal:11434"   # PowerShell
 # 또는 config 의 ollama.host 수정
 ```
 
+## 8.6b 온프렘 NemoClaw / NIM 설정 (OpenAI 호환)
+
+사내 NVIDIA NemoClaw/NIM 등 OpenAI 호환 백엔드로 위임하려면:
+
+1. `~/.tokenlift/config.json`(개인) 또는 패키지 config 의 `providers.nemoclaw` 를 수정:
+   ```jsonc
+   {
+     "providers": {
+       "nemoclaw": {
+         "type": "openai-compat",
+         "host": "http://nim.internal.company:8000",
+         "apiPath": "/v1",
+         "apiKeyEnv": "NEMOCLAW_API_KEY",
+         "routing": { "default": "qwen/qwen2.5-coder-32b-instruct" }
+       }
+     }
+   }
+   ```
+2. 인증이 필요하면 API 키를 환경변수로:
+   ```bash
+   export NEMOCLAW_API_KEY="nvapi-..."        # bash
+   $env:NEMOCLAW_API_KEY="nvapi-..."           # PowerShell
+   ```
+3. 점검·사용:
+   ```bash
+   tokenlift doctor --provider nemoclaw
+   tokenlift models --provider nemoclaw        # 실제 배포 모델명 확인
+   tokenlift gen "..." --provider nemoclaw
+   ```
+4. 기본 백엔드로 고정하려면 config 의 `"provider": "nemoclaw"` 또는
+   `export TOKENLIFT_PROVIDER=nemoclaw`.
+
+자세한 내용은 [11. 백엔드 확장](11-providers.md).
+
 ## 8.7 설치 검증
 
 ```bash
-tokenlift doctor    # Node/설정/Ollama 연결/필수 모델 모두 ✅ 여야 함
-tokenlift models    # 라우팅 매핑이 설치 모델과 일치하는지
+tokenlift doctor    # Node/설정/백엔드 연결/필수 모델 모두 ✅ 여야 함
+tokenlift providers # 설정된 백엔드 목록/활성 확인
+tokenlift models    # 라우팅 매핑이 가용 모델과 일치하는지
 tokenlift gen "hello world 출력 함수" --lang python   # 실제 생성 1회
 ```
 

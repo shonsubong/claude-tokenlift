@@ -1,10 +1,38 @@
 {
   "$schema": "./tokenlift.config.schema.json",
+  "provider": "ollama",
   "ollama": {
     "host": "http://localhost:11434",
     "timeoutMs": 600000,
     "keepAlive": "30m",
     "numCtx": 8192
+  },
+  "providers": {
+    "nemoclaw": {
+      "type": "openai-compat",
+      "host": "http://localhost:8000",
+      "apiPath": "/v1",
+      "apiKeyEnv": "NEMOCLAW_API_KEY",
+      "supportsFIM": false,
+      "models": [],
+      "_comment": "NVIDIA NemoClaw/NIM (OpenAI 호환). host/모델명/키를 사내 환경에 맞게 교체. routing.byTask 의 모델명은 실제 배포된 NIM 모델명이어야 함.",
+      "routing": {
+        "default": "qwen/qwen2.5-coder-32b-instruct",
+        "byTask": {
+          "gen": "qwen/qwen2.5-coder-32b-instruct",
+          "edit": "qwen/qwen2.5-coder-32b-instruct",
+          "test": "qwen/qwen2.5-coder-32b-instruct",
+          "refactor": "qwen/qwen2.5-coder-32b-instruct",
+          "translate": "qwen/qwen2.5-coder-32b-instruct",
+          "explain": "meta/llama-3.1-8b-instruct",
+          "review": "qwen/qwen2.5-coder-32b-instruct",
+          "agent": "nvidia/llama-3.1-nemotron-70b-instruct",
+          "reason": "nvidia/llama-3.1-nemotron-70b-instruct",
+          "docs": "meta/llama-3.1-8b-instruct",
+          "fast": "meta/llama-3.1-8b-instruct"
+        }
+      }
+    }
   },
   "routing": {
     "default": "qwen2.5-coder:14b",

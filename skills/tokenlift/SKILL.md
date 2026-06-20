@@ -80,15 +80,23 @@ tokenlift explain -f huge_module.ts "핵심 데이터 흐름만"
 # 라우팅 추천 (위임할지/모델 무엇)
 tokenlift route "결제 모듈 단위테스트 작성"
 
+# 백엔드 선택 (로컬 Ollama 기본 / 온프렘 NemoClaw·NIM)
+tokenlift gen "..." --provider nemoclaw   # OpenAI 호환 온프렘으로 위임
+tokenlift providers  # 설정된 백엔드 목록/활성 확인
+
 # 운영
-tokenlift models     # 설치 모델 + 라우팅 매핑
-tokenlift doctor     # 환경 점검
+tokenlift models     # (활성 provider) 모델 + 라우팅 매핑
+tokenlift doctor     # 환경 점검 (--provider 로 특정 백엔드 점검)
 tokenlift warmup -m qwen2.5-coder:14b   # 모델 선적재(연속 위임 전 권장)
-tokenlift stats      # 누적 절감 통계
+tokenlift stats      # 누적 절감 통계(백엔드별 집계)
 ```
 
+**백엔드(provider):** 기본은 로컬 `ollama`. 사내 온프렘 `nemoclaw`(NVIDIA NemoClaw/NIM,
+OpenAI 호환)로 위임하려면 `--provider nemoclaw`. 어느 백엔드든 stdout=결과물 계약은 동일하다.
+설정/모델명은 `reference/cli-reference.md` 와 `docs/11-providers.md` 참조.
+
 자세한 플래그/모델 매핑/예시는 같은 폴더의 참고 문서를 읽어라:
-- `reference/cli-reference.md` — 전체 명령·플래그·설치
+- `reference/cli-reference.md` — 전체 명령·플래그·백엔드·설치
 - `reference/routing-rules.md` — 위임 판단 상세 규칙과 예시
 
 ## 검토 원칙 (필수)
@@ -102,5 +110,6 @@ tokenlift stats      # 누적 절감 통계
 
 - 같은 모델을 연속 사용하면 빠르다(모델 교체 시 재적재 비용 발생). 한 세션에선 가능한
   하나의 코드 모델(`qwen2.5-coder:14b`)로 묶어 위임한다.
-- Ollama 가 꺼져 있으면 `tokenlift doctor` 가 알려준다. 그 경우 Claude가 직접 처리하거나
-  사용자에게 `ollama serve` 실행을 요청한다.
+- 백엔드가 꺼져 있으면 `tokenlift doctor` 가 알려준다. 그 경우 Claude가 직접 처리하거나
+  사용자에게 백엔드 기동(`ollama serve` 또는 사내 NIM 확인)을 요청한다.
+- 가벼운 작업은 로컬 `ollama`, 대형 모델이 필요한 작업은 사내 `nemoclaw` 로 나눠 위임할 수 있다.

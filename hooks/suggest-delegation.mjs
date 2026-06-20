@@ -35,12 +35,13 @@ try {
   const cfg = loadConfig();
   const rec = recommend(prompt, cfg);
 
-  if (rec.route === 'ollama' && rec.task) {
+  if (rec.route === 'local' && rec.task) {
+    const provHint = rec.provider && rec.provider !== 'ollama' ? ` --provider ${rec.provider}` : '';
     const hint =
       `[TokenLift 힌트] 이 요청은 대량/반복 코딩 작업으로 보입니다(추정 task=${rec.task}). ` +
-      `직접 길게 생성하지 말고 'tokenlift ${rec.task} ...' (${rec.model})로 로컬 Ollama 에 위임해 ` +
-      `Bedrock 토큰을 절감하는 것을 우선 검토하세요. 생성물은 반드시 검토 후 통합하세요. ` +
-      `보안/설계/복잡 디버깅이면 위임하지 말고 직접 처리하세요.`;
+      `직접 길게 생성하지 말고 'tokenlift ${rec.task} ...${provHint}' (${rec.provider}/${rec.model})로 ` +
+      `로컬 백엔드에 위임해 Bedrock 토큰을 절감하는 것을 우선 검토하세요. 생성물은 반드시 검토 후 ` +
+      `통합하세요. 보안/설계/복잡 디버깅이면 위임하지 말고 직접 처리하세요.`;
     // UserPromptSubmit: stdout 텍스트가 컨텍스트로 추가됨
     process.stdout.write(
       JSON.stringify({

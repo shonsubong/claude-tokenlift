@@ -47,9 +47,21 @@ $15/$75(Opus)는 예시 가정치이며 실제 청구액이 아니다.
 아니요. 5줄짜리 사소한 수정은 위임 왕복 지연이 절감보다 클 수 있다. 임계값(생성 30줄+,
 파일 300줄+, 3파일+)을 넘는 **대량/반복 작업**에서 이득이 크다.
 
-### Q. 다른 LLM 런타임(vLLM, LM Studio 등)도 되나요?
-현재 클라이언트는 Ollama REST(`/api/chat`, `/api/generate`)에 맞춰져 있다. OpenAI 호환
-엔드포인트를 쓰려면 `src/ollama-client.mjs` 를 어댑터로 교체하면 된다(확장 지점).
+### Q. 온프렘 NVIDIA NemoClaw / NIM 으로도 위임할 수 있나요?
+예. NemoClaw/NIM 은 OpenAI 호환(`/v1/chat/completions`)이므로 `openai-compat` 어댑터로
+지원한다. `config.providers.nemoclaw.host` 를 사내 엔드포인트로, 모델명을 실제 배포 ID로
+설정하고 `--provider nemoclaw`(또는 `TOKENLIFT_PROVIDER=nemoclaw`)로 사용한다. 인증은
+`NEMOCLAW_API_KEY` 환경변수의 Bearer 키를 쓴다. → [11. 백엔드 확장](11-providers.md)
+
+### Q. Ollama 와 NemoClaw 를 같이 쓸 수 있나요?
+예. 백엔드는 `--provider` 로 호출마다 고를 수 있다. 가벼운 작업은 로컬 Ollama, 대형 모델이
+필요한 작업은 사내 NIM 으로 나눠 위임하는 하이브리드 운영이 가능하다. `tokenlift stats` 는
+백엔드별로 절감을 집계한다.
+
+### Q. 다른 LLM 런타임(vLLM, TGI, LM Studio 등)도 되나요?
+대부분 OpenAI 호환이므로 `config.providers.<name>` 에 `type: "openai-compat"` 로 추가만 하면
+된다. 코드 수정 불필요. OpenAI 비호환(예: Triton)은 `src/providers/` 에 어댑터 모듈을 추가하고
+`providers/index.mjs` 에 타입을 등록한다(통합 인터페이스만 구현).
 
 ### Q. 외부 npm 패키지를 설치하나요?
 아니요. Node 18+ 내장 기능만 사용한다(의존성 0). 공급망 위험과 설치 마찰이 없다.

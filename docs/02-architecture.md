@@ -21,13 +21,16 @@ TokenLift는 4개 레이어로 구성된다.
                 ▼
 ┌──────────────────────────────────────────────────────────────┐
 │ L3. 코어 모듈 레이어 (src/)                                      │
-│   config · router · tasks · ollama-client · logger · util       │
+│   config · router · tasks · logger · util                       │
+│   providers/  ← 백엔드 추상화 (index · ollama · openai-compat)   │
 └───────────────┬──────────────────────────────────────────────┘
-                │ HTTP (REST)
+                │ HTTP (REST) — provider 어댑터가 프로토콜 흡수
                 ▼
 ┌──────────────────────────────────────────────────────────────┐
-│ L4. Ollama 런타임 (localhost:11434 또는 사내 호스트)            │
-│   /api/chat · /api/generate · /api/tags                         │
+│ L4. 추론 백엔드 (provider)                                       │
+│   ollama        : /api/chat · /api/generate · /api/tags         │
+│   openai-compat : /v1/chat/completions · /v1/completions · /v1/models │
+│   (NVIDIA NemoClaw/NIM, vLLM, TGI, llama.cpp, LocalAI ...)       │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -39,10 +42,14 @@ TokenLift/
 │   └── tokenlift.mjs          # CLI 엔트리(인자 파싱·디스패치·입출력)
 ├── src/
 │   ├── config.mjs             # 설정 로딩/병합(기본<패키지<사용자<env)
-│   ├── ollama-client.mjs      # Ollama REST 클라이언트(chat/generate/tags/warmup)
-│   ├── router.mjs             # task→model 선택 + claude/ollama 위임 추천
+│   ├── providers/             # 백엔드 추상화 레이어
+│   │   ├── index.mjs          #   프로파일 해석 + 어댑터 팩토리
+│   │   ├── ollama.mjs         #   Ollama 어댑터(ollama-client 래핑)
+│   │   └── openai-compat.mjs  #   OpenAI 호환 어댑터(NemoClaw/NIM/vLLM/TGI)
+│   ├── ollama-client.mjs      # Ollama REST 저수준 클라이언트(chat/generate/tags/warmup)
+│   ├── router.mjs             # task→model 선택 + claude/로컬 위임 추천(provider 인지)
 │   ├── tasks.mjs              # 태스크별 프롬프트 빌더
-│   ├── logger.mjs             # 사용량 JSONL 로깅 + 절감 추정/집계
+│   ├── logger.mjs             # 사용량 JSONL 로깅 + 절감 추정/집계(provider별)
 │   └── util.mjs               # 파일IO·코드추출·stdin·포맷 유틸
 ├── config/
 │   └── tokenlift.config.json  # 팀 기본 설정(모델 매핑·단가·임계값)
@@ -67,12 +74,14 @@ TokenLift/
 1. Claude 가 무거운 코딩 작업을 식별 (SKILL.md 규칙)
 2. Bash: tokenlift test -f svc.py -o test_svc.py
 3. bin/tokenlift.mjs
-     → config.loadConfig()        # 모델 매핑/단가/타임아웃
-     → router.pickModel('test')   # = qwen2.5-coder:14b
+     → config.loadConfig()        # provider/모델 매핑/단가/타임아웃
+     → providers.getProvider()    # 활성 provider 어댑터 생성(기본 ollama)
+     → router.pickModel('test', profile)   # provider 라우팅에서 모델 결정
      → util.readFileSafe('svc.py')
-     → tasks.buildTask('test', {files})   # system+user 프롬프트
-     → ollama-client.chat(...)    # POST /api/chat (stream=false)
-4. Ollama 가 코드 생성 → {content, prompt_eval_count, eval_count, total_duration}
+     → tasks.buildTask('test', {files})    # system+user 프롬프트
+     → provider.chat(...)         # ollama→/api/chat | openai-compat→/v1/chat/completions
+4. 백엔드가 코드 생성 → {content, inTokens, outTokens, durationMs} 로 정규화
+
 5. util.extractCode(content)      # ```펜스 제거, <think> 제거
 6. logger.estimateSavings + logUsage  # ~/.tokenlift/usage.jsonl 기록
 7. 출력:
@@ -103,9 +112,10 @@ TokenLift/
 | 런타임 | **Node ESM, 무의존성** | Node 18+ 내장 `fetch` 사용. 설치 마찰 최소화, 공급망 위험 0 |
 | 출력 채널 분리 | **stdout=결과 / stderr=메타** | Claude 가 결과만 깔끔히 캡처 |
 | 라우팅 | **설정 기반 task→model 매핑** | 사내 모델 구성에 맞게 JSON 만 수정 |
+| **백엔드 추상화** | **provider 어댑터(통합 인터페이스)** | Ollama·OpenAI호환(NemoClaw/NIM)을 동일 인터페이스로. 백엔드 교체 시 상위 로직 불변 |
 | 자동 위임 판단 | **키워드 휴리스틱(LLM 미사용)** | 즉시·무비용. 정밀도는 낮으나 안전(애매하면 Claude) |
 | 절감 측정 | **로컬 처리 토큰 × Bedrock 단가** | 단순·투명. gross 추정임을 명시 |
-| 실패 처리 | **친절한 에러 + Claude fallback** | Ollama 다운 시 작업이 막히지 않음 |
+| 실패 처리 | **친절한 에러 + Claude fallback** | 백엔드 다운 시 작업이 막히지 않음 |
 
 ## 2.6 의존성 / 상호작용
 
@@ -116,7 +126,10 @@ TokenLift/
 
 ## 2.7 확장 지점
 
-- **새 태스크 추가**: `tasks.mjs` 에 케이스 + `router.byTask` 매핑 + `bin` 디스패치.
-- **새 모델 라우팅**: `config.routing.byTask` 수정만으로 적용.
+- **새 태스크 추가**: `tasks.mjs` 에 케이스 + provider `routing.byTask` 매핑 + `bin` 디스패치.
+- **새 모델 라우팅**: 해당 provider 의 `routing.byTask` 수정만으로 적용.
 - **원격 Ollama/사내 게이트웨이**: `OLLAMA_HOST` 또는 `--host` 로 지정.
-- **다른 백엔드(vLLM 등 OpenAI 호환)**: `ollama-client.mjs` 를 어댑터로 교체 가능.
+- **OpenAI 호환 백엔드(NemoClaw/NIM, vLLM, TGI ...)**: `config.providers.<name>` 에
+  `type: "openai-compat"` 로 추가만 하면 됨. → [11. 백엔드 확장](11-providers.md)
+- **비-OpenAI 백엔드(Triton 등)**: `src/providers/` 에 어댑터 모듈 추가 +
+  `providers/index.mjs` 의 `createProvider` 에 타입 등록. 통합 인터페이스만 구현하면 됨.

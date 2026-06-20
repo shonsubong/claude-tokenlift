@@ -52,40 +52,57 @@
 ### 라우팅/운영
 | 명령 | 용도 |
 |---|---|
-| `route "<설명>"` | 위임 여부 + 태스크 + 모델 추천 (`--json` 가능) |
-| `models` | 설치된 모델 목록 + task→model 매핑 + 설치 여부 |
-| `doctor` | Node/설정/Ollama 연결/필수 모델 점검 |
+| `route "<설명>"` | 위임 여부 + 태스크 + 백엔드/모델 추천 (`--json` 가능) |
+| `providers` | 설정된 백엔드(provider) 목록 + 활성 표시 |
+| `models` | (활성 provider) 모델 목록 + task→model 매핑 |
+| `doctor` | Node/설정/백엔드 연결/필수 모델 점검 (`--provider` 가능) |
 | `warmup -m <model>` | 모델을 메모리에 선적재(연속 위임 전 권장) |
-| `stats` | 누적 위임 횟수·토큰·Bedrock 환산 절감액 |
+| `stats` | 누적 위임 횟수·토큰·Bedrock 환산 절감액(백엔드별) |
 | `help` | 도움말 |
 
 ## 플래그
 
 | 플래그 | 의미 |
 |---|---|
-| `-m, --model <name>` | 사용할 Ollama 모델 강제 지정(라우팅 무시) |
+| `-p, --provider <name>` | 백엔드 선택 (`ollama` 기본 / `nemoclaw` 등). 미지정 시 `config.provider` |
+| `-m, --model <name>` | 사용할 모델 강제 지정(라우팅 무시). 모델명은 백엔드별로 다름 |
 | `-f, --file <path>` | 입력 파일(여러 번 반복 가능) |
 | `-o, --out <path>` | 결과를 파일로 저장(stdout 엔 경로) |
 | `--apply` | (edit/refactor) 단일 입력파일에 결과를 덮어쓰기 |
 | `--lang <l>` | 소스 언어 힌트 |
 | `--to <l>` | (translate) 대상 언어 / (complete) suffix |
 | `--prefix`, `--suffix` | (complete) FIM 접두/접미 |
-| `--host <url>` | Ollama 호스트 (기본 `http://localhost:11434`) |
+| `--host <url>` | 백엔드 호스트 override |
 | `--timeout <ms>` | 요청 타임아웃(기본 600000) |
 | `--temp <n>` | temperature (기본 0.1) |
-| `--num-ctx <n>` | 컨텍스트 윈도우 토큰 수 |
+| `--num-ctx <n>` | 컨텍스트 윈도우 토큰 수(ollama) |
 | `--json` | 기계 판독용 JSON 출력 |
 | `-q, --quiet` | stderr 메타 출력 억제 |
 | `--no-log` | 사용량 로깅 비활성화 |
+
+## 백엔드(provider)
+
+| 타입 | 대상 | 모델명 예시 |
+|---|---|---|
+| `ollama` | 로컬 Ollama | `qwen2.5-coder:14b` |
+| `openai-compat` | NemoClaw/NIM, vLLM, TGI, LocalAI | `qwen/qwen2.5-coder-32b-instruct` |
+
+```bash
+tokenlift providers                       # 설정된 백엔드 확인
+tokenlift gen "..." --provider nemoclaw   # 온프렘 NIM 으로 위임
+```
+설정/모델/인증은 `docs/11-providers.md` 참조.
 
 ## 환경변수
 
 | 변수 | 효과 |
 |---|---|
 | `OLLAMA_HOST` / `TOKENLIFT_HOST` | Ollama 호스트 |
+| `TOKENLIFT_PROVIDER` | 활성 백엔드(provider) |
 | `TOKENLIFT_MODEL` | 기본 모델 오버라이드 |
 | `TOKENLIFT_TIMEOUT_MS` | 기본 타임아웃 |
 | `TOKENLIFT_NO_LOG=1` | 로깅 비활성화 |
+| `NEMOCLAW_API_KEY` | nemoclaw Bearer 키(또는 `apiKeyEnv` 로 지정한 변수) |
 | `TOKENLIFT_HOME` | 직접 실행 시 저장소 경로 |
 
 ## 설정 파일
