@@ -119,9 +119,13 @@ TokenLift/
 
 ## 2.6 의존성 / 상호작용
 
-- **외부 런타임**: Ollama (필수). 없으면 `doctor`/`chat` 이 친절한 오류 반환.
+- **외부 런타임(생성)**: Ollama 또는 OpenAI 호환 백엔드(최소 1개). 없으면 친절한 오류 반환.
+- **외부 MCP(탐색·권장)**: `codebase-memory-mcp` — 코드 탐색을 지식 그래프로 처리하는 별도
+  서버. **TokenLift CLI 와 독립**이며 스킬 레벨에서 상호 보완(그래프=입력 절감, CLI=출력 절감).
+  미연결 시 탐색은 Read/Grep 으로 graceful 동작.
 - **외부 패키지**: 없음. Node 표준 라이브러리만 사용.
 - **상태**: `~/.tokenlift/usage.jsonl`(로그), `~/.tokenlift/config.json`(개인 설정, 선택).
+  그래프 인덱스는 codebase-memory-mcp 가 `~/.cache/codebase-memory-mcp/` 에 관리.
 - **Claude Code**: 스킬/에이전트/훅 파일을 `~/.claude/` 하위로 배포(설치 스크립트).
 
 ## 2.7 확장 지점

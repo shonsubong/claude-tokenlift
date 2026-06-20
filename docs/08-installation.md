@@ -2,13 +2,14 @@
 
 ## 8.1 사전 요구사항
 
-| 항목 | 버전 | 확인 |
-|---|---|---|
-| Node.js | 18+ | `node --version` |
-| Ollama | 0.6+ | `ollama --version` |
-| 코드 모델 | 1개+ | `ollama list` |
+| 항목 | 버전 | 확인 | 용도 |
+|---|---|---|---|
+| Node.js | 18+ | `node --version` | CLI 런타임 |
+| Ollama | 0.6+ | `ollama --version` | 생성 위임(로컬) |
+| 코드 모델 | 1개+ | `ollama list` | 생성 모델 |
+| codebase-memory-mcp | 최신 | 도구 가용성 | **탐색 위임(그래프)·권장** |
 
-### Ollama 준비
+### Ollama 준비 (생성 위임)
 ```bash
 # 서버 실행(데스크톱 앱이면 자동 실행됨)
 ollama serve
@@ -19,6 +20,23 @@ ollama pull qwen2.5-coder:14b
 ollama pull devstral:24b
 ollama pull deepcoder
 ```
+
+### codebase-memory-mcp 준비 (탐색 위임 · 권장)
+
+코드 탐색을 지식 그래프로 처리해 입력 토큰을 ~99% 절감하는 **별도 MCP 서버**. 설치 시
+Claude Code 가 자동 구성된다(MCP 항목·스킬·Grep/Glob 보강 훅). 없어도 TokenLift 는 동작하며
+탐색만 평소대로(Read/Grep) 처리한다.
+
+```bash
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
+
+# Windows (PowerShell) — 다운로드 후 검토하고 실행
+Invoke-WebRequest -Uri https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.ps1 -OutFile install.ps1
+.\install.ps1
+```
+설치 후 Claude Code 재시작 → "이 프로젝트 인덱싱해줘" 한 번. 자동 인덱싱:
+`codebase-memory-mcp config set auto_index true`. 자세히 → [12. 코드 탐색 위임](12-codebase-memory.md).
 
 ## 8.2 자동 설치 (권장)
 

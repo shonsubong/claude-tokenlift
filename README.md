@@ -1,38 +1,46 @@
 # TokenLift
 
-> Claude Code(Bedrock)의 고비용 토큰 작업을 **로컬 Ollama / 온프렘 NVIDIA NemoClaw(NIM)**
-> 등 코드 특화 LLM으로 위임해 Bedrock 토큰 비용을 절감하는 브리지 CLI + Claude Code 스킬.
+> Claude Code(Bedrock)의 토큰 비용을, **코드 탐색은 지식 그래프(codebase-memory-mcp)로,
+> 코드 생성은 로컬 Ollama / 온프렘 NVIDIA NemoClaw(NIM)로** 위임해 절감하는 Claude Code 스킬 + 브리지 CLI.
 
-복잡한 설계·아키텍처·보안 판단은 Claude가 그대로 처리하고, **출력이 길거나 컨텍스트가 큰
-기계적 코딩 작업**(코드 생성, 테스트 작성, 일괄 리팩터링, 언어 이식, 대용량 파일 요약)은
-로컬 Ollama 또는 사내 온프렘 백엔드로 자동·수동 위임한다.
+코드베이스 **이해·탐색**은 파일 통독 대신 지식 그래프 쿼리로(입력 토큰↓), **대량 생성**(테스트·
+리팩터링·이식 등)은 로컬/온프렘 모델로(출력 토큰↓), **설계·보안·복잡 디버깅**만 Claude가 담당한다.
 
 ```
 사용자 요청
    │
-   ├─ 고난도 판단(설계/보안/디버깅)  ───────────►  Claude (Bedrock)   ← 비싸지만 똑똑함
+   ├─ 코드 탐색/이해/검색/영향분석  ──graph──►  codebase-memory-mcp   ← 입력 토큰 ~99%↓ (로컬)
    │
-   └─ 대량/반복 코딩 작업            ──tokenlift──►  Provider           ← 무료/온프렘, 코드 특화
-                                                  ├─ ollama (로컬)
-                                                  └─ nemoclaw (NIM, OpenAI 호환)
-                                                     │
-                                          결과 검토·통합은 Claude가 책임
+   ├─ 대량/반복 코드 생성          ─tokenlift─►  Provider              ← 출력 토큰↓ (무료/온프렘)
+   │                                          ├─ ollama (로컬)
+   │                                          └─ nemoclaw (NIM, OpenAI 호환)
+   │
+   └─ 고난도 판단(설계/보안/디버깅) ──────────►  Claude (Bedrock)       ← 비싸지만 똑똑함
+                                          (두 위임 결과의 검토·통합도 Claude)
 ```
 
-백엔드는 **provider 추상화**로 분리되어 `--provider ollama|nemoclaw` 로 전환·병행한다.
-→ [11. 백엔드 확장](docs/11-providers.md)
+- 탐색 그래프 → [12. 코드 탐색 위임](docs/12-codebase-memory.md)
+- 생성 백엔드(provider 추상화, `--provider ollama|nemoclaw`) → [11. 백엔드 확장](docs/11-providers.md)
 
-## 왜 절감되는가
+## 왜 절감되는가 — 3개의 기둥
 
-Bedrock 과금에서 **출력 토큰이 입력보다 약 5배 비싸다.** TokenLift는 두 가지로 비용을 옮긴다.
+Bedrock 과금에서 **출력 토큰이 입력의 약 5배**이고, 코드 탐색은 파일 반복 읽기로 **입력 토큰**을
+크게 쓴다. TokenLift는 비싼 소비를 세 방향으로 옮긴다.
 
-1. **생성 위임(출력 절감)** — 길게 생성되는 코드를 Ollama가 만들고, Claude는 짧게 검토만 한다.
-2. **컨텍스트 위임(입력 절감)** — 대용량 파일을 Ollama가 로컬에서 읽고 요약해, Claude는 요약만 받는다.
+1. **탐색 위임(입력 절감)** — codebase-memory-mcp 지식 그래프에 구조 쿼리. 파일별 grep/read
+   대신. 5개 쿼리 ≈ 3,400 토큰 vs 파일 탐색 ≈ 412,000 토큰(약 99%↓).
+2. **생성 위임(출력 절감)** — 길게 생성되는 코드를 Ollama/NemoClaw가 만들고 Claude는 검토만.
+3. **고난도 판단** — 설계·보안·디버깅·의사결정과 위 두 위임의 검토·통합은 Claude가 책임.
 
 ## 빠른 시작
 
 ```bash
-# 0) 전제: Ollama 실행 + 코드 모델 설치
+# 0a) 탐색 그래프(권장): codebase-memory-mcp 설치 후 Claude Code 재시작
+#     macOS/Linux:
+curl -fsSL https://raw.githubusercontent.com/DeusData/codebase-memory-mcp/main/install.sh | bash
+#     이후 "이 프로젝트 인덱싱해줘" 한 번 → 탐색이 그래프로 처리됨
+
+# 0b) 생성 백엔드: Ollama 실행 + 코드 모델
 ollama serve
 ollama pull qwen2.5-coder:14b
 
@@ -42,10 +50,9 @@ cd TokenLift && npm link
 # 2) 환경 점검
 tokenlift doctor
 
-# 3) 위임 실행
+# 3) 위임 실행 (생성)
 tokenlift gen "Express 에러 핸들링 미들웨어" --lang ts
 tokenlift test -f src/service.py -o tests/test_service.py
-tokenlift explain -f huge_module.ts "핵심 데이터 흐름만"
 
 # 4) 누적 절감 확인
 tokenlift stats
@@ -71,10 +78,11 @@ bash scripts/install.sh
 
 | 구성 | 위치 | 역할 |
 |---|---|---|
-| 브리지 CLI | `bin/`, `src/` | 백엔드에 코딩 작업 위임, 절감 로깅 |
-| **Provider 어댑터** | `src/providers/` | ollama / openai-compat(NemoClaw·NIM 등) 백엔드 추상화 |
-| Claude Code 스킬 | `skills/tokenlift/` | 언제/어떻게 위임할지 Claude 에게 지시 |
-| 서브에이전트 | `agents/ollama-delegate.md` | 위임 작업을 격리 실행 |
+| **탐색 그래프 통합** | `skills/tokenlift/` + [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp) | 코드 탐색을 지식 그래프로(입력 토큰↓) — 기본 |
+| 브리지 CLI | `bin/`, `src/` | 백엔드에 코딩 작업 위임(출력 토큰↓), 절감 로깅 |
+| Provider 어댑터 | `src/providers/` | ollama / openai-compat(NemoClaw·NIM 등) 백엔드 추상화 |
+| Claude Code 스킬 | `skills/tokenlift/` | 언제 그래프로 탐색하고 무엇을 위임할지 Claude 에게 지시 |
+| 서브에이전트 | `agents/ollama-delegate.md` | 위임 작업을 격리 실행(그래프로 컨텍스트 수집) |
 | 자동 감지 훅 | `hooks/suggest-delegation.mjs` | 프롬프트 분석 후 위임 힌트 주입(선택) |
 | 설정 | `config/tokenlift.config.json` | 백엔드·모델 매핑·단가·임계값 |
 
@@ -93,11 +101,14 @@ bash scripts/install.sh
 | 09 | [트러블슈팅](docs/09-troubleshooting.md) | 자주 겪는 문제 |
 | 10 | [FAQ](docs/10-faq.md) | 자주 묻는 질문 |
 | 11 | [백엔드 확장](docs/11-providers.md) | Ollama / NemoClaw(NIM) provider 설정 |
+| 12 | [코드 탐색 위임](docs/12-codebase-memory.md) | codebase-memory-mcp 지식 그래프(기본) |
 
 ## 요구사항
 
 - **Node.js 18+** (내장 `fetch` 사용, 외부 의존성 없음)
-- 백엔드 **하나 이상**:
+- **탐색 그래프(권장)**: [codebase-memory-mcp](https://github.com/DeusData/codebase-memory-mcp)
+  (단일 바이너리, 로컬). 없으면 탐색 기둥은 자동 생략(평소대로 Read/Grep).
+- **생성 백엔드 하나 이상**:
   - **Ollama 0.6+** (로컬/사내) + 코드 모델 (예: `qwen2.5-coder:14b`, `devstral:24b`)
   - 또는 **OpenAI 호환 온프렘 서버**(NVIDIA NemoClaw/NIM, vLLM, TGI 등)
 
