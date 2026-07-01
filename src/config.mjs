@@ -72,35 +72,29 @@ const DEFAULTS = {
         },
       },
     },
-    // ── GLM-5.2 (frontier 오픈 모델, 744B MoE / 40B 활성) — 멀티 양자화 tier ──
-    // Ollama 로는 부적합 → llama.cpp(llama-server)로 GGUF 동적 양자화 서빙(OpenAI 호환 /v1).
-    // 여러 양자화 tier(q8/q4/q2)를 scripts/run-glm-fleet.sh 로 사내에 서빙하고, 여러 사용자가
-    // 공유 엔드포인트로 접속한다(멀티유저). task 난도별로 tier 를 라우팅한다.
-    // 앞단 게이트웨이(NemoClaw compatible-endpoint / llama-swap)가 여러 tier 를 하나의 host 로
-    // 합치면 아래처럼 단일 provider 로 model id(=fleet alias)만 바꿔 선택한다. 포트별 직결이면
-    // provider 를 tier 별로 분리(onprem-glm-q8/q4/q2)해도 된다(docs/16 참조).
+    // ── GLM-5.2 (frontier 오픈 모델, 744B MoE / 40B 활성) — NVIDIA 공식 양자화 우선 ──
+    // 우선 경로: NVIDIA 공식 NVFP4(nvidia/GLM-5.2-NVFP4)를 vLLM 으로 서빙(OpenAI 호환 /v1).
+    //   scripts/run-glm-vllm.sh 로 구동. vLLM 연속 배칭 → 멀티유저 동시성 우수(사내 공유 서빙).
+    // ⚠️ 하드웨어: NVFP4 는 Blackwell(B200/B300/GB200) 전용이라 H200(Hopper)에서는 실행 불가.
+    //    H200 이면 default 를 'glm-5.2-fp8'(Z.ai 공식 FP8, Hopper 네이티브)로 바꾸세요.
+    // 대안 경로(저VRAM/CPU offload): Unsloth GGUF + llama.cpp(scripts/run-glm-fleet.sh) → docs/16.
     // Oracle 역할의 1순위(프런티어). 권장 샘플링은 provider.sampling 으로 중앙 관리.
     'onprem-glm': {
       type: 'openai-compat',
-      host: 'http://h200.internal:8080', // 여러 tier 를 합치는 게이트웨이/라우터 주소로 교체
+      host: 'http://h200.internal:8000', // vLLM 엔드포인트(기본 포트 8000)로 교체
       apiPath: '/v1',
       apiKeyEnv: 'ONPREM_API_KEY', // 멀티유저: 각 사용자가 발급받은 Bearer 토큰(에어갭이면 무인증)
       supportsFIM: false, // GLM 은 FIM(complete) 대상 아님 → gen/edit 사용
-      timeoutMs: 1800000, // 대형 quant 콜드 로드/장문 추론 대비(30분). NemoClaw #2403(타임아웃 미반영) 주의
-      models: ['glm-5.2-q8', 'glm-5.2-q4', 'glm-5.2-q2'], // 서빙 중인 quant tier(= fleet alias)
+      timeoutMs: 1800000, // 대형 모델 콜드 로드/장문 추론 대비(30분). NemoClaw #2403(타임아웃 미반영) 주의
+      // 서빙 중인 모델(= vLLM --served-model-name). NVIDIA 공식 NVFP4 우선, H200 은 FP8.
+      models: ['glm-5.2-nvfp4', 'glm-5.2-fp8'],
       sampling: { temperature: 1.0, top_p: 0.95, top_k: 40, min_p: 0.0 },
       // 비표준 요청 필드가 필요하면 여기에. 예: { "chat_template_kwargs": { "enable_thinking": false } }
       // extraBody: {},
       routing: {
-        // task 난도 → quant tier. q8=최고품질(무거움), q4=균형(거의 무손실), q2=빠름/저비용.
-        // ⚠️ 실제 서빙 중인 tier 로 맞추세요(tokenlift models --provider onprem-glm 로 확인).
-        default: 'glm-5.2-q4',
-        byTask: {
-          reason: 'glm-5.2-q8', agent: 'glm-5.2-q8', review: 'glm-5.2-q8',
-          gen: 'glm-5.2-q4', edit: 'glm-5.2-q4', test: 'glm-5.2-q4',
-          refactor: 'glm-5.2-q4', translate: 'glm-5.2-q4',
-          explain: 'glm-5.2-q2', docs: 'glm-5.2-q2', fast: 'glm-5.2-q2',
-        },
+        // vLLM 은 단일 모델이 높은 동시성으로 모든 task 를 처리 → task 별 tier 불필요.
+        // default 만 바꾸면 HW 전환(Blackwell=nvfp4 / H200=fp8). -m 으로 호출별 강제도 가능.
+        default: 'glm-5.2-nvfp4',
       },
     },
     // V100 서버 (대량 처리): Coder 역할 — 대량·정형 생성(최저가). 중소·양자화(GGUF) 최신 모델.

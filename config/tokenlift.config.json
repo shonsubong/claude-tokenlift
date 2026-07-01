@@ -59,29 +59,16 @@
     },
     "onprem-glm": {
       "type": "openai-compat",
-      "host": "http://h200.internal:8080",
+      "host": "http://h200.internal:8000",
       "apiPath": "/v1",
       "apiKeyEnv": "ONPREM_API_KEY",
       "supportsFIM": false,
       "timeoutMs": 1800000,
-      "models": ["glm-5.2-q8", "glm-5.2-q4", "glm-5.2-q2"],
+      "models": ["glm-5.2-nvfp4", "glm-5.2-fp8"],
       "sampling": { "temperature": 1.0, "top_p": 0.95, "top_k": 40, "min_p": 0.0 },
-      "_comment": "GLM-5.2(744B MoE) 멀티 양자화 tier — llama.cpp(llama-server)로 서빙(scripts/run-glm-fleet.sh), 여러 사용자가 공유 host 로 접속(멀티유저). q8=최고품질/q4=균형/q2=빠름. 앞단 게이트웨이(NemoClaw compatible-endpoint/llama-swap)로 여러 tier 를 host 하나에 합치거나, 포트별 직결이면 provider 를 tier 별로 분리. model id 는 fleet alias 와 일치. timeoutMs 는 대형 콜드로드 대비(NemoClaw #2403 주의). docs/16 참조.",
+      "_comment": "GLM-5.2(744B MoE) — NVIDIA 공식 양자화 우선. NVFP4(nvidia/GLM-5.2-NVFP4)를 vLLM 으로 서빙(scripts/run-glm-vllm.sh), vLLM 연속 배칭으로 멀티유저 동시성. ⚠️ NVFP4 는 Blackwell(B200/B300) 전용 → H200(Hopper)이면 default 를 glm-5.2-fp8(Z.ai 공식 FP8)로 변경. 대안(저VRAM)은 Unsloth GGUF+llama.cpp(run-glm-fleet.sh). model id 는 vLLM --served-model-name 과 일치. docs/16 참조.",
       "routing": {
-        "default": "glm-5.2-q4",
-        "byTask": {
-          "reason": "glm-5.2-q8",
-          "agent": "glm-5.2-q8",
-          "review": "glm-5.2-q8",
-          "gen": "glm-5.2-q4",
-          "edit": "glm-5.2-q4",
-          "test": "glm-5.2-q4",
-          "refactor": "glm-5.2-q4",
-          "translate": "glm-5.2-q4",
-          "explain": "glm-5.2-q2",
-          "docs": "glm-5.2-q2",
-          "fast": "glm-5.2-q2"
-        }
+        "default": "glm-5.2-nvfp4"
       }
     },
     "onprem-v100": {
